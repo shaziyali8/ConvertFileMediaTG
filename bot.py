@@ -1,7 +1,8 @@
 import os
 import logging
+import io
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
 # Enable logging
 logging.basicConfig(
@@ -9,9 +10,9 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-TOKEN = "7540526876:AAGGYVz-OUN0EDLhLM767WRauy7t2AWjZGU"
-
+TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
+GROUP_ID = os.getenv("GROUP_ID")
 
 def get_media_type(document):
     """
@@ -44,7 +45,7 @@ def get_media_type(document):
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handles document uploads. Checks if the document is an image or video,
-    downloads it, and sends it back as media (photo/video), and forwards to a channel.
+    downloads it, and sends it back as media (photo/video), and forwards to a channel and/or group.
     """
     document = update.message.document
     media_type = get_media_type(document)
@@ -59,7 +60,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_file = await context.bot.get_file(document.file_id)
 
         # Download file to memory
-        file_content = await new_file.download_as_bytearray()
+        # In python-telegram-bot v20+, we use download_to_memory which accepts a writeable buffer
+        file_buffer = io.BytesIO()
+        await new_file.download_to_memory(out=file_buffer)
+        file_buffer.seek(0)
+        file_content = file_buffer.getvalue()
 
         await context.bot.edit_message_text(
             chat_id=update.message.chat_id,
@@ -67,47 +72,73 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text="Status: Converting and Uploading..."
         )
 
-        media_bytes = bytes(file_content)
+        sent_message = None
 
         # Send back to user
         if media_type == 'image':
-            await context.bot.send_photo(
+            sent_message = await context.bot.send_photo(
                 chat_id=update.message.chat_id,
-                photo=media_bytes,
+                photo=file_content,
                 caption="Here is your image as media.",
                 reply_to_message_id=update.message.message_id
             )
         elif media_type == 'video':
-            await context.bot.send_video(
+            sent_message = await context.bot.send_video(
                 chat_id=update.message.chat_id,
-                video=media_bytes,
+                video=file_content,
                 caption="Here is your video as media.",
                 reply_to_message_id=update.message.message_id,
                 supports_streaming=True
             )
 
-        # Forward to channel if configured
+        # Extract file_id to optimize forwarding
+        file_id_to_send = file_content # Default back to bytes if extraction fails
+        if sent_message:
+            if sent_message.photo:
+                # Photo is a list of sizes, take the last one (largest)
+                file_id_to_send = sent_message.photo[-1].file_id
+            elif sent_message.video:
+                file_id_to_send = sent_message.video.file_id
+
+        # Determine destinations
+        destinations = []
         if CHANNEL_ID:
+            destinations.append(("Channel", CHANNEL_ID))
+        if GROUP_ID:
+            destinations.append(("Group", GROUP_ID))
+
+        forwarded_to = []
+        errors = []
+
+        for name, chat_id in destinations:
             try:
                 if media_type == 'image':
                     await context.bot.send_photo(
-                        chat_id=CHANNEL_ID,
-                        photo=media_bytes,
+                        chat_id=chat_id,
+                        photo=file_id_to_send,
                         caption="New image received."
                     )
                 elif media_type == 'video':
                     await context.bot.send_video(
-                        chat_id=CHANNEL_ID,
-                        video=media_bytes,
+                        chat_id=chat_id,
+                        video=file_id_to_send,
                         caption="New video received.",
                         supports_streaming=True
                     )
-                final_text = "Status: Sent to you and forwarded to channel!"
+                forwarded_to.append(name)
             except Exception as e:
-                logging.error(f"Failed to forward to channel: {e}")
-                final_text = f"Status: Sent to you, but failed to forward to channel ({e})."
-        else:
-            final_text = "Status: Sent to you (Channel ID not configured)."
+                logging.error(f"Failed to forward to {name}: {e}")
+                errors.append(f"{name} ({e})")
+
+        # Construct final status message
+        final_text = "Status: Sent to you"
+        if forwarded_to:
+            final_text += " and forwarded to " + " and ".join(forwarded_to) + "!"
+        elif not destinations:
+            final_text += " (No forwarding configured)."
+
+        if errors:
+            final_text += f"\nFailed to forward to: {', '.join(errors)}"
 
         await context.bot.edit_message_text(
             chat_id=update.message.chat_id,
@@ -123,16 +154,10 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=f"Error processing request: {e}"
         )
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handles the /start command.
-    """
-    await update.message.reply_text("Welcome! Send me a document (image or video) to convert it to media.")
-
 def main():
     if not TOKEN:
         print("Error: BOT_TOKEN environment variable is not set.")
-        print("Please set BOT_TOKEN and optionally CHANNEL_ID.")
+        print("Please set BOT_TOKEN and optionally CHANNEL_ID/GROUP_ID.")
         return
 
     application = ApplicationBuilder().token(TOKEN).build()
@@ -140,10 +165,6 @@ def main():
     # Handle all documents
     document_handler = MessageHandler(filters.Document.ALL, handle_document)
     application.add_handler(document_handler)
-
-    # Handle /start command
-    start_handler = CommandHandler('start', start)
-    application.add_handler(start_handler)
 
     print("Bot is polling...")
     application.run_polling()
