@@ -9,35 +9,46 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-TOKEN = os.getenv("7540526876:AAGGYVz-OUN0EDLhLM767WRauy7t2AWjZGU")
+TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 
-def is_image_file(document) -> bool:
+def get_media_type(document):
     """
-    Determines if a document is an image based on mime_type or file extension.
+    Determines if a document is an image or video based on mime_type or file extension.
     Args:
         document: A telegram.Document object or similar object with mime_type and file_name attributes.
     Returns:
-        bool: True if it appears to be an image, False otherwise.
+        str: 'image', 'video', or None.
     """
-    if document.mime_type and document.mime_type.startswith('image/'):
-        return True
+    mime_type = document.mime_type
+    file_name = document.file_name
 
-    if document.file_name:
-        ext = os.path.splitext(document.file_name)[1].lower()
+    # Check mime type first
+    if mime_type:
+        if mime_type.startswith('image/'):
+            return 'image'
+        if mime_type.startswith('video/'):
+            return 'video'
+
+    # Fallback to extension
+    if file_name:
+        ext = os.path.splitext(file_name)[1].lower()
         if ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff']:
-            return True
+            return 'image'
+        if ext in ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv']:
+            return 'video'
 
-    return False
+    return None
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handles document uploads. Checks if the document is an image,
-    downloads it, and sends it back as a photo (media), and forwards to a channel.
+    Handles document uploads. Checks if the document is an image or video,
+    downloads it, and sends it back as media (photo/video), and forwards to a channel.
     """
     document = update.message.document
+    media_type = get_media_type(document)
 
-    if not is_image_file(document):
+    if not media_type:
         return
 
     progress_msg = await update.message.reply_text("Status: Downloading file...")
@@ -55,22 +66,41 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text="Status: Converting and Uploading..."
         )
 
-        # Send back to user as Photo
-        await context.bot.send_photo(
-            chat_id=update.message.chat_id,
-            photo=bytes(file_content),
-            caption="Here is your image as media.",
-            reply_to_message_id=update.message.message_id
-        )
+        media_bytes = bytes(file_content)
+
+        # Send back to user
+        if media_type == 'image':
+            await context.bot.send_photo(
+                chat_id=update.message.chat_id,
+                photo=media_bytes,
+                caption="Here is your image as media.",
+                reply_to_message_id=update.message.message_id
+            )
+        elif media_type == 'video':
+            await context.bot.send_video(
+                chat_id=update.message.chat_id,
+                video=media_bytes,
+                caption="Here is your video as media.",
+                reply_to_message_id=update.message.message_id,
+                supports_streaming=True
+            )
 
         # Forward to channel if configured
         if CHANNEL_ID:
             try:
-                await context.bot.send_photo(
-                    chat_id=CHANNEL_ID,
-                    photo=bytes(file_content),
-                    caption="New image received."
-                )
+                if media_type == 'image':
+                    await context.bot.send_photo(
+                        chat_id=CHANNEL_ID,
+                        photo=media_bytes,
+                        caption="New image received."
+                    )
+                elif media_type == 'video':
+                    await context.bot.send_video(
+                        chat_id=CHANNEL_ID,
+                        video=media_bytes,
+                        caption="New video received.",
+                        supports_streaming=True
+                    )
                 final_text = "Status: Sent to you and forwarded to channel!"
             except Exception as e:
                 logging.error(f"Failed to forward to channel: {e}")
