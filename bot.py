@@ -1,7 +1,7 @@
 import os
 import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
 # Enable logging
 logging.basicConfig(
@@ -9,7 +9,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = "7540526876:AAGGYVz-OUN0EDLhLM767WRauy7t2AWjZGU"
+
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 def get_media_type(document):
@@ -122,6 +123,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=f"Error processing request: {e}"
         )
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handles the /start command.
+    """
+    await update.message.reply_text("Welcome! Send me a document (image or video) to convert it to media.")
+
 def main():
     if not TOKEN:
         print("Error: BOT_TOKEN environment variable is not set.")
@@ -133,6 +140,10 @@ def main():
     # Handle all documents
     document_handler = MessageHandler(filters.Document.ALL, handle_document)
     application.add_handler(document_handler)
+
+    # Handle /start command
+    start_handler = CommandHandler('start', start)
+    application.add_handler(start_handler)
 
     print("Bot is polling...")
     application.run_polling()
