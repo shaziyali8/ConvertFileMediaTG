@@ -9,7 +9,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("7540526876:AAGGYVz-OUN0EDLhLM767WRauy7t2AWjZGU")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 def is_image_file(document) -> bool:
