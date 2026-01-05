@@ -1,7 +1,7 @@
 import os
 import logging
-import io
-from telegram import Update
+# import io  <-- io is no longer needed as we don't download to memory
+from telegram import Update, error
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
 # Enable logging
@@ -57,7 +57,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handles document uploads. Checks if the document is an image or video,
-    downloads it, and sends it back as media (photo/video), and forwards to a channel and/or group.
+    converts it to media (photo/video) by passing the file_id, and forwards to a channel and/or group.
     """
     document = update.message.document
     media_type = get_media_type(document)
@@ -65,46 +65,37 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not media_type:
         return
 
-    progress_msg = await update.message.reply_text("Status: Downloading file...")
+    # Updated status message (No longer downloading locally)
+    progress_msg = await update.message.reply_text("Status: Processing...")
 
     try:
-        # Get file object
-        new_file = await context.bot.get_file(document.file_id)
+        # We do NOT download the file anymore to avoid the 20MB limit.
+        # Instead, we pass the file_id directly to send_photo/send_video.
+        # Telegram allows sending a Document file_id as a Photo/Video if the format is correct.
 
-        # Download file to memory
-        # In python-telegram-bot v20+, we use download_to_memory which accepts a writeable buffer
-        file_buffer = io.BytesIO()
-        await new_file.download_to_memory(out=file_buffer)
-        file_buffer.seek(0)
-        file_content = file_buffer.getvalue()
-
-        await context.bot.edit_message_text(
-            chat_id=update.message.chat_id,
-            message_id=progress_msg.message_id,
-            text="Status: Converting and Uploading..."
-        )
-
+        file_id = document.file_id
         sent_message = None
 
         # Send back to user
         if media_type == 'image':
             sent_message = await context.bot.send_photo(
                 chat_id=update.message.chat_id,
-                photo=file_content,
+                photo=file_id,
                 caption="Here is your image as media.",
                 reply_to_message_id=update.message.message_id
             )
         elif media_type == 'video':
             sent_message = await context.bot.send_video(
                 chat_id=update.message.chat_id,
-                video=file_content,
+                video=file_id,
                 caption="Here is your video as media.",
                 reply_to_message_id=update.message.message_id,
                 supports_streaming=True
             )
 
-        # Extract file_id to optimize forwarding
-        file_id_to_send = file_content # Default back to bytes if extraction fails
+        # Extract the NEW file_id from the sent media message.
+        # This ensures we have a valid Photo/Video file_id for forwarding.
+        file_id_to_send = file_id # Fallback to original
         if sent_message:
             if sent_message.photo:
                 # Photo is a list of sizes, take the last one (largest)
@@ -158,12 +149,25 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=final_text
         )
 
-    except Exception as e:
-        logging.error(f"Error processing file: {e}")
+    except error.TelegramError as e:
+        logging.error(f"Telegram API Error: {e}")
+        error_text = f"Error: {e.message}"
+        if "File is too big" in str(e): # Should not happen with file_id, but good to have
+            error_text = "Error: File is too big for the bot to process."
+        elif "Wrong file identifier" in str(e) or "IMAGE_PROCESS_FAILED" in str(e):
+             error_text = "Error: Telegram could not convert this file to media. It might be corrupted or an unsupported format."
+
         await context.bot.edit_message_text(
             chat_id=update.message.chat_id,
             message_id=progress_msg.message_id,
-            text=f"Error processing request: {e}"
+            text=error_text
+        )
+    except Exception as e:
+        logging.error(f"Unexpected Error: {e}")
+        await context.bot.edit_message_text(
+            chat_id=update.message.chat_id,
+            message_id=progress_msg.message_id,
+            text="Error processing request."
         )
 
 def main():
