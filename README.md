@@ -9,6 +9,7 @@ It uses **Pyrogram** (MTProto) to support large files (up to 2GB) and efficient 
 -   **MTProto Powered**: Uses the Telegram MTProto API via Pyrogram for better performance and large file support.
 -   **Media Detection**: Detects image and video files sent as documents.
 -   **Conversion**: Converts the document to a native media type (Photo or Video).
+-   **Thumbnail Support**: Automatically extracts or generates thumbnails for videos.
 -   **Forwarding**: Forwards the media to a configured Telegram channel and/or group.
 -   **Progress Updates**: Sends real-time progress updates.
 
@@ -17,11 +18,16 @@ It uses **Pyrogram** (MTProto) to support large files (up to 2GB) and efficient 
 -   Python 3.7+
 -   A Telegram Bot Token (from @BotFather)
 -   **API ID and API Hash**: Required for MTProto clients. You can get these from [my.telegram.org](https://my.telegram.org).
+-   **ffmpeg**: Required for video thumbnail generation.
 
 ## Installation
 
 1.  Clone the repository or download the files.
-2.  Install the required dependencies:
+2.  Install the required system dependencies:
+    *   **Ubuntu/Debian**: `sudo apt-get install ffmpeg`
+    *   **MacOS**: `brew install ffmpeg`
+    *   **Windows**: Download and install from ffmpeg.org
+3.  Install the required Python dependencies:
 
     ```bash
     pip install -r requirements.txt
