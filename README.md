@@ -9,6 +9,7 @@ This is a Python Telegram bot that automatically converts image and video files 
 -   **Forwarding**: Forwards the media to a configured Telegram channel and/or group.
 -   **Optimization**: Uses Telegram file IDs to forward media instantly without re-uploading.
 -   **Progress Updates**: Sends real-time progress updates to the user (Downloading, Uploading, Done).
+-   **ID Helper**: Use `/start` to see the current chat ID (useful for setup).
 
 ## Supported Formats
 
@@ -38,6 +39,20 @@ Set the following environment variables:
 -   `BOT_TOKEN`: Your Telegram Bot API token.
 -   `CHANNEL_ID`: (Optional) The ID of the channel to forward media to (e.g., `@mychannel` or `-100123456789`).
 -   `GROUP_ID`: (Optional) The ID of the group to forward media to (e.g., `-100987654321`).
+
+## Setup Tips
+
+### Getting the correct Group/Channel ID
+
+If you receive a "Chat not found" error, ensure:
+1.  The bot is a member (and preferably admin) of the group/channel.
+2.  The ID is correct.
+
+**To find the correct Group ID:**
+1.  Add the bot to the group.
+2.  Send the command `/start` in the group.
+3.  The bot will reply with `Current Chat ID: -100xxxxxxxx`.
+4.  Copy this ID (including the negative sign) and use it for `GROUP_ID`.
 
 ## Usage
 

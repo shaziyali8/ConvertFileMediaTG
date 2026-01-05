@@ -2,7 +2,7 @@ import os
 import logging
 import io
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
 # Enable logging
 logging.basicConfig(
@@ -41,6 +41,18 @@ def get_media_type(document):
             return 'video'
 
     return None
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handles the /start command. Sends a welcome message and the current Chat ID.
+    """
+    chat_id = update.effective_chat.id
+    await update.message.reply_text(
+        f"Hello! Send me an image or video file (as Document) and I will convert it to media.\n\n"
+        f"Current Chat ID: `{chat_id}`\n"
+        f"Use this ID to configure CHANNEL_ID or GROUP_ID.",
+        parse_mode='Markdown'
+    )
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -161,6 +173,10 @@ def main():
         return
 
     application = ApplicationBuilder().token(TOKEN).build()
+
+    # Handle /start command
+    start_handler = CommandHandler('start', start_command)
+    application.add_handler(start_handler)
 
     # Handle all documents
     document_handler = MessageHandler(filters.Document.ALL, handle_document)
