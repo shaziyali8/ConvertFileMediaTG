@@ -209,6 +209,12 @@ def main():
             # Delete the status message on success
             await status_msg.delete()
 
+            # Delete the original message (the old file)
+            try:
+                await message.delete()
+            except Exception as e:
+                logging.warning(f"Could not delete original message: {e}")
+
         except Exception as e:
             logging.error(f"Error processing file: {e}")
             await status_msg.edit_text(f"Error: {str(e)}")
