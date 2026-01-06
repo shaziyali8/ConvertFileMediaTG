@@ -180,31 +180,34 @@ def main():
                 )
 
             # 4. Forward
-            destinations = []
-            if CHANNEL_ID: destinations.append(("Channel", int(CHANNEL_ID) if CHANNEL_ID.lstrip('-').isdigit() else CHANNEL_ID))
-            if GROUP_ID: destinations.append(("Group", int(GROUP_ID) if GROUP_ID.lstrip('-').isdigit() else GROUP_ID))
+            # destinations = []
+            # if CHANNEL_ID: destinations.append(("Channel", int(CHANNEL_ID) if CHANNEL_ID.lstrip('-').isdigit() else CHANNEL_ID))
+            # if GROUP_ID: destinations.append(("Group", int(GROUP_ID) if GROUP_ID.lstrip('-').isdigit() else GROUP_ID))
 
-            forwarded_to = []
-            errors = []
+            # forwarded_to = []
+            # errors = []
 
-            for name, dest_chat_id in destinations:
-                try:
-                    # Forward the NEW media message
-                    if sent_message:
-                        await sent_message.copy(chat_id=dest_chat_id, caption=f"New {media_type} received.")
-                        forwarded_to.append(name)
-                except Exception as e:
-                    logging.error(f"Failed to forward to {name}: {e}")
-                    errors.append(f"{name} ({e})")
+            # for name, dest_chat_id in destinations:
+            #     try:
+            #         # Forward the NEW media message
+            #         if sent_message:
+            #             await sent_message.copy(chat_id=dest_chat_id, caption=f"New {media_type} received.")
+            #             forwarded_to.append(name)
+            #     except Exception as e:
+            #         logging.error(f"Failed to forward to {name}: {e}")
+            #         errors.append(f"{name} ({e})")
 
             # Final Status
-            final_text = "Status: Done!"
-            if forwarded_to:
-                final_text = "Status: Sent to you and forwarded to " + " and ".join(forwarded_to) + "!"
-            if errors:
-                final_text += f"\nFailed to forward to: {', '.join(errors)}"
+            # final_text = "Status: Done!"
+            # if forwarded_to:
+            #     final_text = "Status: Sent to you and forwarded to " + " and ".join(forwarded_to) + "!"
+            # if errors:
+            #     final_text += f"\nFailed to forward to: {', '.join(errors)}"
 
-            await status_msg.edit_text(final_text)
+            # await status_msg.edit_text(final_text)
+
+            # Delete the status message on success
+            await status_msg.delete()
 
         except Exception as e:
             logging.error(f"Error processing file: {e}")
