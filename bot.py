@@ -20,6 +20,11 @@ API_HASH = os.getenv("API_HASH")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 GROUP_ID = os.getenv("GROUP_ID", "-1003086504750")
 
+# Semaphore to limit concurrent heavy operations (like ffmpeg or large file handling)
+# Adjust limit based on server resources (e.g., 4 for a small VPS)
+MAX_CONCURRENT_TASKS = 4
+task_semaphore = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
+
 def get_media_type(document):
     """
     Determines if a document is an image or video based on mime_type or file extension.
@@ -45,10 +50,10 @@ def get_media_type(document):
 async def progress(current, total, status_msg, action_text, last_update_time):
     """
     Progress callback for downloading and uploading.
-    Updates the message text at most once every few seconds to avoid flood limits.
+    Updates the message text at most once every 5 seconds to avoid flood limits.
     """
     now = time.time()
-    if now - last_update_time[0] < 3 and current != total:
+    if now - last_update_time[0] < 5 and current != total:
         return
 
     last_update_time[0] = now
@@ -62,22 +67,24 @@ async def progress(current, total, status_msg, action_text, last_update_time):
 async def generate_thumbnail(video_path, thumb_path):
     """
     Generates a thumbnail from a video file using ffmpeg (asynchronous).
+    Uses a semaphore to prevent too many concurrent ffmpeg processes.
     """
-    try:
-        # Take a frame at 00:00:01
-        process = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-i", video_path, "-ss", "00:00:01",
-            "-vframes", "1", "-vf", "scale=320:-1",
-            thumb_path,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL
-        )
-        await process.wait()
+    async with task_semaphore:
+        try:
+            # Take a frame at 00:00:01
+            process = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-i", video_path, "-ss", "00:00:01",
+                "-vframes", "1", "-vf", "scale=320:-1",
+                thumb_path,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await process.wait()
 
-        if os.path.exists(thumb_path):
-            return True
-    except Exception as e:
-        logging.error(f"Error generating thumbnail: {e}")
+            if os.path.exists(thumb_path):
+                return True
+        except Exception as e:
+            logging.error(f"Error generating thumbnail: {e}")
     return False
 
 def main():
@@ -89,7 +96,9 @@ def main():
         "media_converter_bot",
         api_id=API_ID,
         api_hash=API_HASH,
-        bot_token=TOKEN
+        bot_token=TOKEN,
+        workers=50,  # Increase workers to handle multiple concurrent updates
+        sleep_threshold=60  # Wait up to 60s for FloodWait automatically
     )
 
     @app.on_message(filters.command("start"))
@@ -179,32 +188,11 @@ def main():
                     progress_args=(status_msg, "Uploading", last_update)
                 )
 
-            # 4. Forward
-            # destinations = []
-            # if CHANNEL_ID: destinations.append(("Channel", int(CHANNEL_ID) if CHANNEL_ID.lstrip('-').isdigit() else CHANNEL_ID))
-            # if GROUP_ID: destinations.append(("Group", int(GROUP_ID) if GROUP_ID.lstrip('-').isdigit() else GROUP_ID))
-
-            # forwarded_to = []
-            # errors = []
-
-            # for name, dest_chat_id in destinations:
-            #     try:
-            #         # Forward the NEW media message
-            #         if sent_message:
-            #             await sent_message.copy(chat_id=dest_chat_id, caption=f"New {media_type} received.")
-            #             forwarded_to.append(name)
-            #     except Exception as e:
-            #         logging.error(f"Failed to forward to {name}: {e}")
-            #         errors.append(f"{name} ({e})")
+            # 4. Forward (Disabled)
+            # ... (Logic commented out)
 
             # Final Status
-            # final_text = "Status: Done!"
-            # if forwarded_to:
-            #     final_text = "Status: Sent to you and forwarded to " + " and ".join(forwarded_to) + "!"
-            # if errors:
-            #     final_text += f"\nFailed to forward to: {', '.join(errors)}"
-
-            # await status_msg.edit_text(final_text)
+            # ... (Logic commented out)
 
             # Delete the status message on success
             await status_msg.delete()
