@@ -92,6 +92,15 @@ def main():
         print("Error: BOT_TOKEN, API_ID, and API_HASH environment variables are required.")
         return
 
+    # Cleanup downloads directory on startup
+    if os.path.exists("downloads"):
+        try:
+            shutil.rmtree("downloads")
+            logging.info("Cleaned up downloads directory.")
+        except Exception as e:
+            logging.error(f"Failed to clean downloads directory: {e}")
+    os.makedirs("downloads", exist_ok=True)
+
     app = Client(
         "media_converter_bot",
         api_id=API_ID,
@@ -126,10 +135,16 @@ def main():
         status_msg = await message.reply_text("Status: Initializing download...")
 
         # Paths
+        # Include chat_id in prefix to avoid collisions between chats
+        file_prefix = f"{message.chat.id}_{message.id}"
         file_name = document.file_name or f"downloaded_file_{message.id}"
-        # Ensure unique path to avoid collisions
-        local_path = f"downloads/{message.id}_{file_name}"
-        thumb_path = f"downloads/{message.id}_thumb.jpg"
+
+        # Helper target path (Pyrogram might modify the final name)
+        local_target_path = f"downloads/{file_prefix}_{file_name}"
+        thumb_path = f"downloads/{file_prefix}_thumb.jpg"
+
+        downloaded_path = None
+        final_thumb_path = None
 
         os.makedirs("downloads", exist_ok=True)
 
@@ -138,17 +153,22 @@ def main():
             start_time = time.time()
             last_update = [0]
 
-            await message.download(
-                file_name=local_path,
+            downloaded_path = await message.download(
+                file_name=local_target_path,
                 progress=progress,
                 progress_args=(status_msg, "Downloading", last_update)
             )
 
+            # Fallback if download returned None but file exists (unlikely but safe)
+            if not downloaded_path and os.path.exists(local_target_path):
+                 downloaded_path = local_target_path
+
+            if not downloaded_path:
+                 raise Exception("Download failed or path invalid.")
+
             await status_msg.edit_text("Status: Download complete. Processing/Generating thumbnail...")
 
             # 2. Handle Thumbnail
-            final_thumb_path = None
-
             # If document already has a thumbnail, try to download it
             if document.thumbs:
                 try:
@@ -159,7 +179,7 @@ def main():
 
             # If no thumbnail from document (or download failed), and it's a video, generate one
             if not final_thumb_path and media_type == 'video':
-                if await generate_thumbnail(local_path, thumb_path):
+                if await generate_thumbnail(downloaded_path, thumb_path):
                     final_thumb_path = thumb_path
 
             # 3. Upload
@@ -170,7 +190,7 @@ def main():
             if media_type == 'image':
                 sent_message = await client.send_photo(
                     chat_id=message.chat.id,
-                    photo=local_path,
+                    photo=downloaded_path,
                     caption="Here is your image as media.",
                     reply_to_message_id=message.id,
                     progress=progress,
@@ -179,7 +199,7 @@ def main():
             elif media_type == 'video':
                 sent_message = await client.send_video(
                     chat_id=message.chat.id,
-                    video=local_path,
+                    video=downloaded_path,
                     thumb=final_thumb_path,
                     caption="Here is your video as media.",
                     reply_to_message_id=message.id,
@@ -208,10 +228,20 @@ def main():
             await status_msg.edit_text(f"Error: {str(e)}")
         finally:
             # 5. Cleanup
-            if os.path.exists(local_path):
-                os.remove(local_path)
-            if final_thumb_path and os.path.exists(final_thumb_path):
-                os.remove(final_thumb_path)
+            # Robust cleanup: delete any file in downloads/ that starts with the file_prefix
+            # Use file_prefix + "_" to avoid partial matches (e.g. prefix "10_1" matching "10_11_...")
+            cleanup_prefix = file_prefix + "_"
+            try:
+                if os.path.exists("downloads"):
+                    for filename in os.listdir("downloads"):
+                        if filename.startswith(cleanup_prefix):
+                            file_path = os.path.join("downloads", filename)
+                            try:
+                                os.remove(file_path)
+                            except Exception as e:
+                                logging.error(f"Failed to delete {file_path}: {e}")
+            except Exception as e:
+                 logging.error(f"Error during cleanup scan: {e}")
 
     print("Bot is starting...")
     app.run()
